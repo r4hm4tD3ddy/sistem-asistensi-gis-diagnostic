@@ -1,0 +1,212 @@
+<!doctype html>
+<html lang="id">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1.0">
+  <title>Diagnostic Google Identity Services</title>
+  <script src="https://accounts.google.com/gsi/client" async defer></script>
+  <style>
+    *{box-sizing:border-box}
+    body{margin:0;padding:32px 20px;font-family:Arial,sans-serif;background:#f4f7fb;color:#172033}
+    main{width:min(900px,100%);margin:20px auto;background:#fff;border:1px solid #dbe2ea;border-radius:14px;padding:28px;box-shadow:0 8px 28px rgba(15,23,42,.08)}
+    h1{margin:0 0 8px;font-size:25px}
+    p{line-height:1.6}
+    .muted{color:#64748b}
+    table{width:100%;border-collapse:collapse;margin-top:20px}
+    th,td{padding:10px;border:1px solid #dbe2ea;text-align:left;vertical-align:top;word-break:break-word}
+    th{background:#f8fafc;width:32%}
+    .panel{margin-top:20px;padding:18px;border:1px solid #dbe2ea;border-radius:10px;background:#f8fafc}
+    input{width:100%;min-height:42px;padding:10px 12px;border:1px solid #cbd5e1;border-radius:8px;font:inherit}
+    button{margin-top:10px;min-height:42px;padding:10px 18px;border:0;border-radius:8px;background:#2563eb;color:#fff;font-weight:700;cursor:pointer}
+    pre{white-space:pre-wrap;word-break:break-word;margin:0}
+    code{word-break:break-word}
+    .ok{color:#166534;font-weight:700}
+    .error{color:#b91c1c;font-weight:700}
+  </style>
+</head>
+<body>
+<main>
+  <h1>Diagnostic Google Identity Services</h1>
+  <p class="muted">TEST-ONLY. Halaman ini berada pada origin eksternal dan tidak terhubung ke login production atau database.</p>
+
+  <table>
+    <tr><th>Browser origin</th><td id="origin">Membaca...</td></tr>
+    <tr><th>OAuth Client ID</th><td id="clientIdStatus">Belum diberikan</td></tr>
+    <tr><th>GIS library</th><td id="gisStatus">Memuat...</td></tr>
+    <tr><th>Google Sign-In</th><td id="buttonStatus">Menunggu...</td></tr>
+    <tr><th>ID token</th><td id="credentialStatus">Belum diuji</td></tr>
+  </table>
+
+  <section class="panel">
+    <strong>OAuth Client ID</strong>
+    <p class="muted">Masukkan Client ID Web dari Google Cloud. Client secret tidak diperlukan untuk diagnostic ini.</p>
+    <input id="clientIdInput" type="text" placeholder="1234567890-xxxxxxxx.apps.googleusercontent.com" autocomplete="off">
+    <button id="startButton" type="button">Mulai Diagnostic GIS</button>
+  </section>
+
+  <section class="panel">
+    <div id="googleSignInButton"></div>
+  </section>
+
+  <section class="panel" id="resultPanel">
+    Setelah GIS diinisialisasi, tombol Sign in with Google akan muncul di sini.
+  </section>
+
+  <p class="muted">Payload JWT hanya didecode secara lokal untuk diagnosis. Signature token tidak diverifikasi di browser.</p>
+</main>
+
+<script>
+(function () {
+  'use strict';
+
+  var originEl = document.getElementById('origin');
+  var clientIdStatusEl = document.getElementById('clientIdStatus');
+  var gisStatusEl = document.getElementById('gisStatus');
+  var buttonStatusEl = document.getElementById('buttonStatus');
+  var credentialStatusEl = document.getElementById('credentialStatus');
+  var inputEl = document.getElementById('clientIdInput');
+  var startButton = document.getElementById('startButton');
+  var resultPanel = document.getElementById('resultPanel');
+  var buttonContainer = document.getElementById('googleSignInButton');
+
+  originEl.textContent = window.location.origin;
+
+  var params = new URLSearchParams(window.location.search);
+  var initialClientId = (params.get('clientId') || '').trim();
+  if (initialClientId) inputEl.value = initialClientId;
+
+  function escapeHtml(value) {
+    return String(value || '').replace(/[&<>"']/g, function (char) {
+      return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[char];
+    });
+  }
+
+  function validClientId(value) {
+    return /^[A-Za-z0-9._-]+\.apps\.googleusercontent\.com$/.test(value);
+  }
+
+  function decodeJwtPayload(credential) {
+    var parts = String(credential || '').split('.');
+    if (parts.length !== 3) throw new Error('Format credential bukan JWT.');
+
+    var base64 = parts[1].replace(/-/g, '+').replace(/_/g, '/');
+    while (base64.length % 4) base64 += '=';
+
+    var binary = window.atob(base64);
+    var bytes = new Uint8Array(binary.length);
+    for (var i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
+
+    return JSON.parse(new TextDecoder('utf-8').decode(bytes));
+  }
+
+  window.handleCredentialResponse = function (response) {
+    if (!response || !response.credential) {
+      credentialStatusEl.textContent = 'TIDAK ADA CREDENTIAL';
+      credentialStatusEl.className = 'error';
+      return;
+    }
+
+    try {
+      var payload = decodeJwtPayload(response.credential);
+
+      credentialStatusEl.textContent = 'BERHASIL — ID token diterima';
+      credentialStatusEl.className = 'ok';
+
+      resultPanel.innerHTML =
+        '<strong class="ok">GIS berhasil mengembalikan ID token.</strong>' +
+        '<pre>' + escapeHtml(JSON.stringify(payload, null, 2)) + '</pre>';
+    } catch (error) {
+      credentialStatusEl.textContent = 'ERROR';
+      credentialStatusEl.className = 'error';
+      resultPanel.innerHTML =
+        '<strong class="error">Gagal mendecode ID token:</strong> ' +
+        escapeHtml(error && error.message ? error.message : String(error));
+    }
+  };
+
+  function initializeGIS(clientId) {
+    if (!window.google || !window.google.accounts || !window.google.accounts.id) {
+      gisStatusEl.textContent = 'BELUM TERSEDIA';
+      gisStatusEl.className = 'error';
+      buttonStatusEl.textContent = 'GAGAL MEMUAT';
+      resultPanel.textContent = 'Library Google Identity Services belum tersedia. Refresh halaman dan coba lagi.';
+      return;
+    }
+
+    gisStatusEl.textContent = 'TERMUAT';
+    gisStatusEl.className = 'ok';
+
+    try {
+      window.google.accounts.id.initialize({
+        client_id: clientId,
+        callback: window.handleCredentialResponse,
+        auto_select: false,
+        cancel_on_tap_outside: true
+      });
+
+      buttonContainer.innerHTML = '';
+      window.google.accounts.id.renderButton(buttonContainer, {
+        type: 'standard',
+        theme: 'outline',
+        size: 'large',
+        text: 'signin_with',
+        shape: 'rectangular',
+        logo_alignment: 'left'
+      });
+
+      clientIdStatusEl.textContent = clientId;
+      buttonStatusEl.textContent = 'TERSEDIA';
+      buttonStatusEl.className = 'ok';
+      credentialStatusEl.textContent = 'Belum login';
+      credentialStatusEl.className = '';
+      resultPanel.textContent = 'GIS berhasil diinisialisasi. Klik tombol Sign in with Google.';
+    } catch (error) {
+      buttonStatusEl.textContent = 'ERROR';
+      buttonStatusEl.className = 'error';
+      resultPanel.innerHTML =
+        '<strong class="error">GIS gagal diinisialisasi:</strong> ' +
+        escapeHtml(error && error.message ? error.message : String(error));
+    }
+  }
+
+  function startDiagnostic() {
+    var clientId = inputEl.value.trim();
+
+    if (!validClientId(clientId)) {
+      clientIdStatusEl.textContent = 'FORMAT TIDAK VALID';
+      clientIdStatusEl.className = 'error';
+      resultPanel.textContent = 'Masukkan OAuth Client ID Web yang berakhiran .apps.googleusercontent.com.';
+      return;
+    }
+
+    window.history.replaceState(null, '', window.location.pathname + '?clientId=' + encodeURIComponent(clientId));
+    initializeGIS(clientId);
+  }
+
+  startButton.addEventListener('click', startDiagnostic);
+
+  var attempts = 0;
+  var timer = window.setInterval(function () {
+    attempts++;
+
+    if (window.google && window.google.accounts && window.google.accounts.id) {
+      window.clearInterval(timer);
+      gisStatusEl.textContent = 'TERMUAT';
+      gisStatusEl.className = 'ok';
+
+      if (initialClientId && validClientId(initialClientId)) {
+        initializeGIS(initialClientId);
+      } else {
+        buttonStatusEl.textContent = 'Masukkan Client ID';
+      }
+    } else if (attempts >= 50) {
+      window.clearInterval(timer);
+      gisStatusEl.textContent = 'TIDAK TERSEDIA';
+      gisStatusEl.className = 'error';
+      buttonStatusEl.textContent = 'GAGAL MEMUAT';
+    }
+  }, 200);
+})();
+</script>
+</body>
+</html>
