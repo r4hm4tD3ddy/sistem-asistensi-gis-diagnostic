@@ -65,6 +65,10 @@
       style="margin-left:8px;background:#166534">
       Verifikasi Cryptographic di SERVER
     </button>
+    <button id="verifySessionButton" type="button" disabled
+      style="margin-left:8px">
+      Uji Session di SERVER
+    </button>
     <p id="serverVerifyStatus" class="muted" style="margin-bottom:0">
       ID token belum tersedia.
     </p>
@@ -88,6 +92,9 @@
 
   var verifyCryptoButton =
     document.getElementById('verifyCryptoButton');
+
+  var verifySessionButton =
+    document.getElementById('verifySessionButton');
 
   function submitTokenToServer() {
     if (!latestCredential) {
@@ -196,6 +203,59 @@
     submitTokenToServerCrypto
   );
 
+  function submitTokenToServerSession() {
+    if (!latestCredential) {
+      resultPanel.textContent = 'ID token belum tersedia.';
+      return;
+    }
+
+    var form = document.createElement('form');
+    form.method = 'POST';
+    form.action =
+      'https://script.google.com/macros/s/' +
+      'AKfycbxvxwSGxgAY54pr1iey7_PNiEB0Fi0pHM2lapKB__q7N8QGRr0RlyL6-kfzZXvyrk7u1Q' +
+      '/exec?mode=diagnostic-gis-session';
+    form.target = '_blank';
+    form.style.display = 'none';
+
+    var modeInput = document.createElement('input');
+    modeInput.type = 'hidden';
+    modeInput.name = 'mode';
+    modeInput.value = 'diagnostic-gis-session';
+
+    var tokenInput = document.createElement('input');
+    tokenInput.type = 'hidden';
+    tokenInput.name = 'id_token';
+    tokenInput.value = latestCredential;
+
+    form.appendChild(modeInput);
+    form.appendChild(tokenInput);
+    document.body.appendChild(form);
+
+    serverVerifyStatus.textContent =
+      'Session diagnostic dikirim ke SERVER. Tab hasil sedang dibuka...';
+
+    resultPanel.innerHTML =
+      '<strong class="ok">Session diagnostic dikirim ke SERVER.</strong>' +
+      '<p>Periksa tab baru untuk hasil lifecycle session.</p>';
+
+    verifySessionButton.disabled = true;
+    verifySessionButton.textContent = 'Sedang diuji...';
+
+    form.submit();
+
+    window.setTimeout(function () {
+      verifySessionButton.disabled = false;
+      verifySessionButton.textContent = 'Uji ulang Session di SERVER';
+      form.remove();
+    }, 1000);
+  }
+
+  verifySessionButton.addEventListener(
+    'click',
+    submitTokenToServerSession
+  );
+
   var originEl = document.getElementById('origin');
   var clientIdStatusEl = document.getElementById('clientIdStatus');
   var gisStatusEl = document.getElementById('gisStatus');
@@ -249,8 +309,10 @@
       latestCredential = response.credential;
       verifyServerButton.disabled = false;
       verifyCryptoButton.disabled = false;
+      verifySessionButton.disabled = false;
       verifyServerButton.textContent = 'Verifikasi ID Token di SERVER';
       verifyCryptoButton.textContent = 'Verifikasi Cryptographic di SERVER';
+      verifySessionButton.textContent = 'Uji Session di SERVER';
 
       credentialStatusEl.textContent = 'BERHASIL — ID token diterima';
       credentialStatusEl.className = 'ok';
