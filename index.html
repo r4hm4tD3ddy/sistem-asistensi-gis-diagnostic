@@ -61,6 +61,10 @@
     <button id="verifyServerButton" type="button" disabled>
       Verifikasi ID Token di SERVER
     </button>
+    <button id="verifyCryptoButton" type="button" disabled
+      style="margin-left:8px;background:#166534">
+      Verifikasi Cryptographic di SERVER
+    </button>
     <p id="serverVerifyStatus" class="muted" style="margin-bottom:0">
       ID token belum tersedia.
     </p>
@@ -81,6 +85,9 @@
 
   var serverVerifyStatus =
     document.getElementById('serverVerifyStatus');
+
+  var verifyCryptoButton =
+    document.getElementById('verifyCryptoButton');
 
   function submitTokenToServer() {
     if (!latestCredential) {
@@ -134,9 +141,47 @@
     }, 1000);
   }
 
+  function submitTokenToServerCrypto() {
+    if (!latestCredential) {
+      resultPanel.textContent = 'ID token belum tersedia.';
+      return;
+    }
+
+    var form = document.createElement('form');
+    form.method = 'POST';
+    form.action =
+      'https://script.google.com/macros/s/' +
+      'AKfycbxvxwSGxgAY54pr1iey7_PNiEB0Fi0pHM2lapKB__q7N8QGRr0RlyL6-kfzZXvyrk7u1Q' +
+      '/exec?mode=diagnostic-gis-verify-crypto';
+    form.target = '_blank';
+    form.style.display = 'none';
+
+    var tokenInput = document.createElement('input');
+    tokenInput.type = 'hidden';
+    tokenInput.name = 'id_token';
+    tokenInput.value = latestCredential;
+
+    form.appendChild(tokenInput);
+    document.body.appendChild(form);
+
+    serverVerifyStatus.textContent =
+      'ID token dikirim ke SERVER untuk verifikasi cryptographic. Tab hasil diagnostic sedang dibuka...';
+
+    form.submit();
+
+    window.setTimeout(function () {
+      form.remove();
+    }, 1000);
+  }
+
   verifyServerButton.addEventListener(
     'click',
     submitTokenToServer
+  );
+
+  verifyCryptoButton.addEventListener(
+    'click',
+    submitTokenToServerCrypto
   );
 
   var originEl = document.getElementById('origin');
@@ -191,7 +236,9 @@
 
       latestCredential = response.credential;
       verifyServerButton.disabled = false;
+      verifyCryptoButton.disabled = false;
       verifyServerButton.textContent = 'Verifikasi ID Token di SERVER';
+      verifyCryptoButton.textContent = 'Verifikasi Cryptographic di SERVER';
 
       credentialStatusEl.textContent = 'BERHASIL — ID token diterima';
       credentialStatusEl.className = 'ok';
