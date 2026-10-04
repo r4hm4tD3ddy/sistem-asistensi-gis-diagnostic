@@ -55,19 +55,15 @@
   <section class="panel">
     <strong>Server-side verification diagnostic</strong>
     <p class="muted">
-      Setelah ID token diterima, kirim token langsung melalui HTTP POST ke
-      SERVER Apps Script untuk pemeriksaan diagnostic. Token tidak ditampilkan
-      kembali dan tidak digunakan untuk membuat session.
+      Setelah ID token diterima, kirim token melalui HTTP POST ke SERVER
+      Apps Script. Hasil diagnostic dibuka pada tab browser baru.
     </p>
     <button id="verifyServerButton" type="button" disabled>
       Verifikasi ID Token di SERVER
     </button>
-    <iframe
-      id="serverVerifyFrame"
-      name="serverVerifyFrame"
-      title="Hasil server verification"
-      style="width:100%;min-height:360px;margin-top:14px;border:1px solid #dbe2ea;border-radius:8px;background:#fff"
-    ></iframe>
+    <p id="serverVerifyStatus" class="muted" style="margin-bottom:0">
+      ID token belum tersedia.
+    </p>
   </section>
 
   <p class="muted">Payload JWT hanya didecode secara lokal untuk diagnosis. Signature token tidak diverifikasi di browser.</p>
@@ -83,13 +79,12 @@
   var verifyServerButton =
     document.getElementById('verifyServerButton');
 
-  var serverVerifyFrame =
-    document.getElementById('serverVerifyFrame');
+  var serverVerifyStatus =
+    document.getElementById('serverVerifyStatus');
 
   function submitTokenToServer() {
     if (!latestCredential) {
-      resultPanel.textContent =
-        'ID token belum tersedia.';
+      resultPanel.textContent = 'ID token belum tersedia.';
       return;
     }
 
@@ -100,7 +95,13 @@
       'https://script.google.com/macros/s/' +
       'AKfycbxvxwSGxgAY54pr1iey7_PNiEB0Fi0pHM2lapKB__q7N8QGRr0RlyL6-kfzZXvyrk7u1Q' +
       '/exec?mode=diagnostic-gis-verify';
-    form.target = 'serverVerifyFrame';
+
+    /*
+     * Apps Script HTML Service dapat melakukan redirect ke host hasil
+     * eksekusi. Untuk diagnostic lintas-origin, buka hasil POST pada tab
+     * browser baru agar browser menangani rangkaian redirect tanpa iframe.
+     */
+    form.target = '_blank';
     form.style.display = 'none';
 
     var tokenInput = document.createElement('input');
@@ -111,12 +112,15 @@
     form.appendChild(tokenInput);
     document.body.appendChild(form);
 
+    serverVerifyStatus.textContent =
+      'ID token dikirim ke SERVER. Tab hasil diagnostic sedang dibuka...';
+
     resultPanel.innerHTML =
-      '<strong class="ok">ID token dikirim ke SERVER untuk diagnostic.</strong>' +
-      '<p>Hasil verifikasi akan muncul pada panel SERVER di bawah.</p>';
+      '<strong class="ok">ID token dikirim ke SERVER.</strong>' +
+      '<p>Periksa tab baru untuk hasil verifikasi server-side.</p>';
 
     verifyServerButton.disabled = true;
-    verifyServerButton.textContent = 'Sedang diverifikasi...';
+    verifyServerButton.textContent = 'Mengirim...';
 
     form.submit();
 
@@ -124,6 +128,8 @@
       verifyServerButton.disabled = false;
       verifyServerButton.textContent =
         'Verifikasi ulang ID Token di SERVER';
+      serverVerifyStatus.textContent =
+        'Anda dapat mengirim ulang token untuk pengujian berikutnya.';
       form.remove();
     }, 1000);
   }
