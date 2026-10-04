@@ -37,9 +37,6 @@
     <div id="status" class="status info">
       Memuat Google Sign-In...
     </div>
-    <div class="fallback">
-      <a id="fallbackLink" href="#" target="_top">Gunakan login lama</a>
-    </div>
   </section>
 </main>
 
@@ -49,8 +46,6 @@
 
   var params = new URLSearchParams(window.location.search);
   var clientId = String(params.get('clientId') || '').trim();
-  var fallbackUrl = String(params.get('fallbackUrl') || '').trim();
-
   // Fixed SERVER target: query-string tampering must not redirect credentials
   // to an arbitrary third-party endpoint.
   var serverUrl =
@@ -60,17 +55,9 @@
 
   var statusEl = document.getElementById('status');
   var googleButton = document.getElementById('googleButton');
-  var fallbackLink = document.getElementById('fallbackLink');
-
   function setStatus(text, type) {
     statusEl.textContent = text;
     statusEl.className = 'status ' + type;
-  }
-
-  if (fallbackUrl) {
-    fallbackLink.href = fallbackUrl;
-  } else {
-    fallbackLink.style.display = 'none';
   }
 
   if (!/^[A-Za-z0-9._-]+\.apps\.googleusercontent\.com$/.test(clientId)) {
