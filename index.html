@@ -69,6 +69,10 @@
       style="margin-left:8px">
       Uji Session di SERVER
     </button>
+    <button id="handoffPortalButton" type="button" disabled
+      style="margin-left:8px;background:#0f4c81">
+      Buka Portal via GIS (TEST)
+    </button>
     <p id="serverVerifyStatus" class="muted" style="margin-bottom:0">
       ID token belum tersedia.
     </p>
@@ -95,6 +99,9 @@
 
   var verifySessionButton =
     document.getElementById('verifySessionButton');
+
+  var handoffPortalButton =
+    document.getElementById('handoffPortalButton');
 
   function submitTokenToServer() {
     if (!latestCredential) {
@@ -256,6 +263,59 @@
     submitTokenToServerSession
   );
 
+  function submitTokenToServerHandoff() {
+    if (!latestCredential) {
+      resultPanel.textContent = 'ID token belum tersedia.';
+      return;
+    }
+
+    var form = document.createElement('form');
+    form.method = 'POST';
+    form.action =
+      'https://script.google.com/macros/s/' +
+      'AKfycbxvxwSGxgAY54pr1iey7_PNiEB0Fi0pHM2lapKB__q7N8QGRr0RlyL6-kfzZXvyrk7u1Q' +
+      '/exec?mode=diagnostic-gis-handoff';
+    form.target = '_blank';
+    form.style.display = 'none';
+
+    var modeInput = document.createElement('input');
+    modeInput.type = 'hidden';
+    modeInput.name = 'mode';
+    modeInput.value = 'diagnostic-gis-handoff';
+
+    var tokenInput = document.createElement('input');
+    tokenInput.type = 'hidden';
+    tokenInput.name = 'id_token';
+    tokenInput.value = latestCredential;
+
+    form.appendChild(modeInput);
+    form.appendChild(tokenInput);
+    document.body.appendChild(form);
+
+    serverVerifyStatus.textContent =
+      'GIS → SERVER → session → portal. Tab portal sedang dibuka...';
+
+    resultPanel.innerHTML =
+      '<strong class="ok">Permintaan handoff portal dikirim ke SERVER.</strong>' +
+      '<p>Tab baru akan menampilkan portal menggunakan session diagnostic.</p>';
+
+    handoffPortalButton.disabled = true;
+    handoffPortalButton.textContent = 'Membuka Portal...';
+
+    form.submit();
+
+    window.setTimeout(function () {
+      handoffPortalButton.disabled = false;
+      handoffPortalButton.textContent = 'Buka Portal via GIS (TEST)';
+      form.remove();
+    }, 1000);
+  }
+
+  handoffPortalButton.addEventListener(
+    'click',
+    submitTokenToServerHandoff
+  );
+
   var originEl = document.getElementById('origin');
   var clientIdStatusEl = document.getElementById('clientIdStatus');
   var gisStatusEl = document.getElementById('gisStatus');
@@ -310,6 +370,7 @@
       verifyServerButton.disabled = false;
       verifyCryptoButton.disabled = false;
       verifySessionButton.disabled = false;
+      handoffPortalButton.disabled = false;
       verifyServerButton.textContent = 'Verifikasi ID Token di SERVER';
       verifyCryptoButton.textContent = 'Verifikasi Cryptographic di SERVER';
       verifySessionButton.textContent = 'Uji Session di SERVER';
