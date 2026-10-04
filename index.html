@@ -52,12 +52,86 @@
     Setelah GIS diinisialisasi, tombol Sign in with Google akan muncul di sini.
   </section>
 
+  <section class="panel">
+    <strong>Server-side verification diagnostic</strong>
+    <p class="muted">
+      Setelah ID token diterima, kirim token langsung melalui HTTP POST ke
+      SERVER Apps Script untuk pemeriksaan diagnostic. Token tidak ditampilkan
+      kembali dan tidak digunakan untuk membuat session.
+    </p>
+    <button id="verifyServerButton" type="button" disabled>
+      Verifikasi ID Token di SERVER
+    </button>
+    <iframe
+      id="serverVerifyFrame"
+      name="serverVerifyFrame"
+      title="Hasil server verification"
+      style="width:100%;min-height:360px;margin-top:14px;border:1px solid #dbe2ea;border-radius:8px;background:#fff"
+    ></iframe>
+  </section>
+
   <p class="muted">Payload JWT hanya didecode secara lokal untuk diagnosis. Signature token tidak diverifikasi di browser.</p>
 </main>
 
 <script>
 (function () {
   'use strict';
+
+
+  var latestCredential = '';
+
+  var verifyServerButton =
+    document.getElementById('verifyServerButton');
+
+  var serverVerifyFrame =
+    document.getElementById('serverVerifyFrame');
+
+  function submitTokenToServer() {
+    if (!latestCredential) {
+      resultPanel.textContent =
+        'ID token belum tersedia.';
+      return;
+    }
+
+    var form = document.createElement('form');
+
+    form.method = 'POST';
+    form.action =
+      'https://script.google.com/macros/s/' +
+      'AKfycbxvxwSGxgAY54pr1iey7_PNiEB0Fi0pHM2lapKB__q7N8QGRr0RlyL6-kfzZXvyrk7u1Q' +
+      '/exec?mode=diagnostic-gis-verify';
+    form.target = 'serverVerifyFrame';
+    form.style.display = 'none';
+
+    var tokenInput = document.createElement('input');
+    tokenInput.type = 'hidden';
+    tokenInput.name = 'id_token';
+    tokenInput.value = latestCredential;
+
+    form.appendChild(tokenInput);
+    document.body.appendChild(form);
+
+    resultPanel.innerHTML =
+      '<strong class="ok">ID token dikirim ke SERVER untuk diagnostic.</strong>' +
+      '<p>Hasil verifikasi akan muncul pada panel SERVER di bawah.</p>';
+
+    verifyServerButton.disabled = true;
+    verifyServerButton.textContent = 'Sedang diverifikasi...';
+
+    form.submit();
+
+    window.setTimeout(function () {
+      verifyServerButton.disabled = false;
+      verifyServerButton.textContent =
+        'Verifikasi ulang ID Token di SERVER';
+      form.remove();
+    }, 1000);
+  }
+
+  verifyServerButton.addEventListener(
+    'click',
+    submitTokenToServer
+  );
 
   var originEl = document.getElementById('origin');
   var clientIdStatusEl = document.getElementById('clientIdStatus');
@@ -108,6 +182,10 @@
 
     try {
       var payload = decodeJwtPayload(response.credential);
+
+      latestCredential = response.credential;
+      verifyServerButton.disabled = false;
+      verifyServerButton.textContent = 'Verifikasi ID Token di SERVER';
 
       credentialStatusEl.textContent = 'BERHASIL — ID token diterima';
       credentialStatusEl.className = 'ok';
