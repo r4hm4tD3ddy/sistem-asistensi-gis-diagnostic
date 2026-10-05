@@ -1,0 +1,207 @@
+<!doctype html>
+<html lang="id">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1.0">
+  <title>Google Drive — Billing</title>
+  <script src="https://accounts.google.com/gsi/client" async defer></script>
+  <style>
+    *{box-sizing:border-box}
+    body{margin:0;min-height:100vh;display:flex;align-items:flex-start;justify-content:center;padding:56px 24px 24px;font-family:Arial,sans-serif;background:#f4f7fb;color:#172033}
+    main{width:min(620px,100%);background:#fff;border:1px solid #dbe2ea;border-radius:14px;box-shadow:0 8px 28px rgba(15,23,42,.08);padding:32px}
+    h1{margin:0 0 8px;font-size:24px}
+    p{line-height:1.6;color:#64748b}
+    .panel{margin-top:22px;padding:18px;border:1px solid #dbe2ea;border-radius:10px;background:#f8fafc}
+    .row{display:flex;justify-content:space-between;gap:16px;padding:7px 0;border-bottom:1px solid #e5e7eb}.row:last-child{border-bottom:0}
+    .label{color:#64748b}.value{font-weight:700;text-align:right;word-break:break-word}
+    button{margin-top:16px;min-height:44px;padding:11px 18px;border:0;border-radius:8px;background:#2563eb;color:#fff;font-weight:700;cursor:pointer}
+    button:disabled{opacity:.55;cursor:not-allowed}
+    .success{color:#166534;font-weight:700}.error{color:#991b1b;font-weight:700}.info{color:#1e3a8a}
+    .hidden{display:none}
+    input[type=file]{width:100%;padding:10px;border:1px solid #cbd5e1;border-radius:8px;background:#fff}
+    .muted{font-size:13px}
+  </style>
+</head>
+<body>
+<main>
+  <h1 id="title">Hubungkan Google Drive</h1>
+  <p id="intro">Sistem akan meminta izin Google Drive melalui Google Identity Services, bukan melalui halaman otorisasi native Apps Script.</p>
+
+  <section class="panel">
+    <div class="row"><span class="label">Mode</span><span class="value" id="modeLabel">—</span></div>
+    <div class="row"><span class="label">Akun Google Drive</span><span class="value" id="emailLabel">Akan diperiksa setelah izin diberikan</span></div>
+  </section>
+
+  <section class="panel" id="uploadPanel" hidden>
+    <strong>Bukti Pembayaran</strong>
+    <p class="muted">Pilih kembali file bukti pembayaran yang akan disimpan pada Drive Anda. PDF, JPG/JPEG, PNG; maksimal 10 MB.</p>
+    <input id="fileInput" type="file" accept=".pdf,image/jpeg,image/png">
+  </section>
+
+  <button id="authorizeButton" type="button">Izinkan Google Drive</button>
+  <p id="status" class="info">Menyiapkan Google Identity Services...</p>
+</main>
+
+<script>
+(function(){
+  'use strict';
+
+  var params=new URLSearchParams(window.location.search);
+  var mode=String(params.get('mode')||'connect').trim().toLowerCase();
+  var actionToken=String(params.get('actionToken')||'').trim();
+  var folderId=String(params.get('folderId')||'').trim();
+  var controllerEmail=String(params.get('controllerEmail')||'').trim().toLowerCase();
+  var clientId='876806511172-g47b99c0u4s851prqe3kn4tdr40eu0ji.apps.googleusercontent.com';
+  var serverUrl='https://script.google.com/macros/s/AKfycbxvxwSGxgAY54pr1iey7_PNiEB0Fi0pHM2lapKB__q7N8QGRr0RlyL6-kfzZXvyrk7u1Q/exec';
+  var driveScope='https://www.googleapis.com/auth/drive.file';
+  var tokenClient=null;
+  var latestEmail='';
+
+  var title=document.getElementById('title');
+  var intro=document.getElementById('intro');
+  var modeLabel=document.getElementById('modeLabel');
+  var emailLabel=document.getElementById('emailLabel');
+  var uploadPanel=document.getElementById('uploadPanel');
+  var fileInput=document.getElementById('fileInput');
+  var authorizeButton=document.getElementById('authorizeButton');
+  var status=document.getElementById('status');
+
+  modeLabel.textContent=mode==='upload'?'Upload Bukti Pembayaran':'Hubungkan Google Drive';
+  if(mode==='upload'){
+    title.textContent='Upload Bukti Pembayaran';
+    intro.textContent='Izin Google Drive dilakukan melalui Google Identity Services. File kemudian dibuat langsung pada folder Bukti Pembayaran Dosen milik Anda.';
+    uploadPanel.hidden=false;
+    authorizeButton.textContent='Izinkan dan Upload';
+  }
+
+  function setStatus(text,kind){status.textContent=text;status.className=kind||'info';}
+  function esc(v){return String(v||'').replace(/[&<>"']/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c];});}
+
+  function postResult(fields){
+    var form=document.createElement('form');
+    form.method='POST';
+    form.action=serverUrl;
+    form.target='_top';
+    form.style.display='none';
+    Object.keys(fields).forEach(function(key){
+      var input=document.createElement('input');
+      input.type='hidden';input.name=key;input.value=String(fields[key]||'');form.appendChild(input);
+    });
+    document.body.appendChild(form);
+    form.submit();
+  }
+
+  function driveFetch(url,options){
+    options=options||{};options.headers=options.headers||{};options.headers.Authorization='Bearer '+options.accessToken;delete options.accessToken;
+    return fetch(url,options).then(function(response){
+      return response.text().then(function(text){
+        var data={};try{data=text?JSON.parse(text):{};}catch(e){data={raw:text};}
+        if(!response.ok){var msg=(data.error&&data.error.message)||data.raw||('Google Drive HTTP '+response.status);throw new Error(msg);}
+        return {response:response,data:data};
+      });
+    });
+  }
+
+  function getDriveUser(accessToken){
+    return driveFetch('https://www.googleapis.com/drive/v3/about?fields=user(emailAddress)',{method:'GET',accessToken:accessToken}).then(function(r){
+      var email=r.data&&r.data.user&&r.data.user.emailAddress?String(r.data.user.emailAddress).trim().toLowerCase():'';
+      if(!email)throw new Error('Email akun Google Drive tidak dapat diperoleh.');
+      latestEmail=email;emailLabel.textContent=email;return email;
+    });
+  }
+
+  function ensureFolder(accessToken){
+    if(folderId)return Promise.resolve({id:folderId,webViewLink:'https://drive.google.com/drive/folders/'+encodeURIComponent(folderId)});
+    return driveFetch('https://www.googleapis.com/drive/v3/files?fields=id,name,webViewLink',{method:'POST',accessToken:accessToken,headers:{'Content-Type':'application/json'},body:JSON.stringify({name:'Bukti Pembayaran Dosen',mimeType:'application/vnd.google-apps.folder',parents:['root']})}).then(function(r){
+      if(!r.data||!r.data.id)throw new Error('Folder Bukti Pembayaran Dosen gagal dibuat.');
+      return r.data;
+    });
+  }
+
+  function shareFolder(accessToken,id){
+    if(!controllerEmail)return Promise.resolve();
+    return driveFetch('https://www.googleapis.com/drive/v3/files/'+encodeURIComponent(id)+'/permissions?sendNotificationEmail=false&fields=id,emailAddress,role',{method:'POST',accessToken:accessToken,headers:{'Content-Type':'application/json'},body:JSON.stringify({role:'reader',type:'user',emailAddress:controllerEmail})}).then(function(){return true;}).catch(function(error){
+      if(String(error.message||'').toLowerCase().indexOf('already')>=0)return true;
+      throw error;
+    });
+  }
+
+  function connectDrive(accessToken){
+    setStatus('Memeriksa akun Google Drive...', 'info');
+    return getDriveUser(accessToken).then(function(email){
+      return ensureFolder(accessToken).then(function(folder){
+        setStatus('Folder berhasil disiapkan. Menyelaraskan akses Pengelola Sistem...', 'info');
+        return shareFolder(accessToken,folder.id).then(function(){
+          setStatus('Koneksi Google Drive berhasil. Menyimpan hasil ke SERVER...', 'success');
+          postResult({mode:'drive-gis-connect-result',actionToken:actionToken,email:email,folderId:folder.id,folderUrl:folder.webViewLink||('https://drive.google.com/drive/folders/'+encodeURIComponent(folder.id))});
+        });
+      });
+    });
+  }
+
+  function initiateResumableUpload(accessToken,file){
+    var metadata={name:file.name,mimeType:file.type,parents:[folderId]};
+    return fetch('https://www.googleapis.com/upload/drive/v3/files?uploadType=resumable&fields=id,name,webViewLink,parents,owners(emailAddress)',{
+      method:'POST',
+      headers:{'Authorization':'Bearer '+accessToken,'Content-Type':'application/json; charset=UTF-8','X-Upload-Content-Type':file.type,'X-Upload-Content-Length':String(file.size)},
+      body:JSON.stringify(metadata)
+    }).then(function(response){
+      if(!response.ok) return response.text().then(function(t){throw new Error(t||('Gagal memulai upload HTTP '+response.status));});
+      var location=response.headers.get('Location');
+      if(!location)throw new Error('Google Drive tidak mengembalikan upload session.');
+      return fetch(location,{method:'PUT',headers:{'Content-Type':file.type},body:file});
+    }).then(function(response){
+      return response.text().then(function(text){
+        var data={};try{data=text?JSON.parse(text):{};}catch(e){data={};}
+        if(!response.ok)throw new Error((data.error&&data.error.message)||('Upload Drive gagal HTTP '+response.status));
+        return data;
+      });
+    });
+  }
+
+  function uploadDrive(accessToken){
+    var file=fileInput&&fileInput.files&&fileInput.files[0];
+    if(!file)throw new Error('Pilih file bukti pembayaran terlebih dahulu.');
+    if(file.size<=0||file.size>10*1024*1024)throw new Error('Ukuran file bukti pembayaran harus lebih dari 0 dan maksimal 10 MB.');
+    if(['application/pdf','image/jpeg','image/png'].indexOf(String(file.type||'').toLowerCase())<0)throw new Error('Bukti pembayaran harus PDF, JPG/JPEG, atau PNG.');
+    if(!folderId)throw new Error('Folder bukti pembayaran belum tersedia.');
+    setStatus('Mengunggah file langsung ke Google Drive Anda...', 'info');
+    return getDriveUser(accessToken).then(function(email){
+      return initiateResumableUpload(accessToken,file).then(function(result){
+        if(!result||!result.id)throw new Error('Google Drive tidak mengembalikan ID file.');
+        setStatus('File berhasil dibuat di Drive. Menyimpan metadata pembayaran...', 'success');
+        postResult({mode:'drive-gis-upload-result',actionToken:actionToken,email:email,fileId:result.id,fileName:result.name||file.name,fileUrl:result.webViewLink||('https://drive.google.com/file/d/'+encodeURIComponent(result.id)+'/view')});
+      });
+    });
+  }
+
+  function startAuthorization(){
+    if(!actionToken){setStatus('Action token tidak tersedia.', 'error');return;}
+    if(!window.google||!window.google.accounts||!window.google.accounts.oauth2){setStatus('Google Identity Services belum tersedia. Silakan refresh halaman.', 'error');return;}
+    authorizeButton.disabled=true;
+    setStatus('Membuka izin Google Drive...', 'info');
+    tokenClient=window.google.accounts.oauth2.initTokenClient({
+      client_id:clientId,
+      scope:driveScope,
+      include_granted_scopes:true,
+      callback:function(response){
+        if(!response||response.error||!response.access_token){
+          authorizeButton.disabled=false;
+          setStatus(response&&response.error_description?response.error_description:'Izin Google Drive tidak diberikan.', 'error');
+          return;
+        }
+        try{
+          if(mode==='upload')uploadDrive(response.access_token);else connectDrive(response.access_token);
+        }catch(error){authorizeButton.disabled=false;setStatus(error&&error.message?error.message:String(error),'error');}
+      },
+      error_callback:function(error){authorizeButton.disabled=false;setStatus(error&&error.message?error.message:'Jendela izin Google Drive tidak dapat dibuka.','error');}
+    });
+    tokenClient.requestAccessToken({prompt:'consent'});
+  }
+
+  authorizeButton.addEventListener('click',startAuthorization);
+  setStatus('Siap. Klik tombol untuk meminta izin Google Drive.', 'info');
+})();
+</script>
+</body>
+</html>
