@@ -140,6 +140,14 @@
     });
   }
 
+  function shareFile(accessToken,id){
+    if(!controllerEmail)return Promise.resolve();
+    return driveFetch('https://www.googleapis.com/drive/v3/files/'+encodeURIComponent(id)+'/permissions?sendNotificationEmail=false&fields=id,emailAddress,role',{method:'POST',accessToken:accessToken,headers:{'Content-Type':'application/json'},body:JSON.stringify({role:'reader',type:'user',emailAddress:controllerEmail})}).then(function(){return true;}).catch(function(error){
+      if(String(error.message||'').toLowerCase().indexOf('already')>=0)return true;
+      throw error;
+    });
+  }
+
   function initiateResumableUpload(accessToken,file,parentFolderId){
     var metadata={name:file.name,mimeType:file.type,parents:[parentFolderId]};
     return fetch('https://www.googleapis.com/upload/drive/v3/files?uploadType=resumable&fields=id,name,webViewLink,parents,owners(emailAddress)',{
@@ -173,8 +181,9 @@
         return shareFolder(accessToken,folder.id).then(function(){
           return initiateResumableUpload(accessToken,file,String(folder.id||'')).then(function(result){
             if(!result||!result.id)throw new Error('Google Drive tidak mengembalikan ID file.');
-            setStatus('File berhasil dibuat di Drive. Menyimpan metadata pembayaran...', 'success');
-            postResult({
+            return shareFile(accessToken,result.id).then(function(){
+              setStatus('File berhasil dibuat dan akses Pengelola Sistem disiapkan. Menyimpan metadata pembayaran...', 'success');
+              postResult({
               mode:'drive-gis-upload-result',
               actionToken:actionToken,
               email:email,
@@ -183,6 +192,7 @@
               fileId:result.id,
               fileName:result.name||file.name,
               fileUrl:result.webViewLink||('https://drive.google.com/file/d/'+encodeURIComponent(result.id)+'/view')
+              });
             });
           });
         });
