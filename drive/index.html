@@ -34,7 +34,8 @@
 
   <section class="panel" id="uploadPanel" hidden>
     <strong>Bukti Pembayaran</strong>
-    <p class="muted">Bukti pembayaran dari Portal Dosen akan diteruskan ke proses Google Drive. Anda tidak perlu memilih file lagi di halaman ini.</p>
+    <p class="muted">Pilih file bukti pembayaran yang akan disimpan pada Drive Anda. PDF, JPG/JPEG, PNG; maksimal 10 MB.</p>
+    <input id="fileInput" type="file" accept=".pdf,image/jpeg,image/png">
   </section>
 
   <button id="authorizeButton" type="button">Izinkan Google Drive</button>
@@ -61,7 +62,7 @@
   var modeLabel=document.getElementById('modeLabel');
   var emailLabel=document.getElementById('emailLabel');
   var uploadPanel=document.getElementById('uploadPanel');
-  var pendingFile=null;
+  var fileInput=document.getElementById('fileInput');
   var authorizeButton=document.getElementById('authorizeButton');
   var status=document.getElementById('status');
 
@@ -159,8 +160,8 @@
   }
 
   function uploadDrive(accessToken){
-    var file=pendingFile;
-    if(!file)throw new Error('Bukti pembayaran dari Portal Dosen belum diterima.');
+    var file=fileInput&&fileInput.files&&fileInput.files[0];
+    if(!file)throw new Error('Pilih file bukti pembayaran terlebih dahulu.');
     if(file.size<=0||file.size>10*1024*1024)throw new Error('Ukuran file bukti pembayaran harus lebih dari 0 dan maksimal 10 MB.');
     if(['application/pdf','image/jpeg','image/png'].indexOf(String(file.type||'').toLowerCase())<0)throw new Error('Bukti pembayaran harus PDF, JPG/JPEG, atau PNG.');
 
@@ -212,35 +213,33 @@
     tokenClient.requestAccessToken({prompt:'consent'});
   }
 
-  window.addEventListener('message',function(event){
-    if(event.origin!=='https://script.google.com')return;
-    if(!event.data || event.data.type!=='BILLING_UPLOAD_FILE')return;
-    if(String(event.data.actionToken||'')!==actionToken)return;
+  uploadPanel.hidden=false;
+  authorizeButton.disabled=true;
+  authorizeButton.textContent='Izinkan dan Upload';
 
-    var file=event.data.file;
-    if(!file || typeof file.size!=='number'){
-      setStatus('Bukti pembayaran dari Portal Dosen tidak diterima.', 'error');
+  fileInput.addEventListener('change',function(){
+    var file=fileInput.files&&fileInput.files[0];
+    if(!file){
+      authorizeButton.disabled=true;
+      setStatus('Pilih bukti pembayaran terlebih dahulu.', 'info');
       return;
     }
-
-    pendingFile=file;
-    uploadPanel.hidden=false;
+    if(file.size<=0||file.size>10*1024*1024){
+      authorizeButton.disabled=true;
+      setStatus('Ukuran file maksimal 10 MB.', 'error');
+      return;
+    }
+    if(['application/pdf','image/jpeg','image/png'].indexOf(String(file.type||'').toLowerCase())<0){
+      authorizeButton.disabled=true;
+      setStatus('Bukti pembayaran harus PDF, JPG/JPEG, atau PNG.', 'error');
+      return;
+    }
     authorizeButton.disabled=false;
-    authorizeButton.textContent='Izinkan dan Upload';
-    setStatus('Bukti pembayaran siap. Klik Izinkan dan Upload untuk memberikan akses Google Drive.', 'info');
+    setStatus('Bukti pembayaran siap. Klik Izinkan dan Upload.', 'info');
   });
 
   authorizeButton.addEventListener('click',startAuthorization);
-
-  try{
-    window.opener && window.opener.postMessage({
-      type:'BILLING_GATEWAY_READY',
-      actionToken:actionToken
-    },'https://script.google.com');
-  }catch(e){}
-
-  authorizeButton.disabled=true;
-  setStatus('Menunggu bukti pembayaran dari Portal Dosen...', 'info');
+  setStatus('Pilih bukti pembayaran yang akan diunggah.', 'info');
 })();
 </script>
 </body>
