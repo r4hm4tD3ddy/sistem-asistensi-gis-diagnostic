@@ -57,6 +57,8 @@
   var driveScope='https://www.googleapis.com/auth/drive.file';
   var tokenClient=null;
   var latestEmail='';
+  var retryFolder=null;
+  var retryFolderStorageKey='billing-drive-folder:'+actionToken;
 
   var title=document.getElementById('title');
   var intro=document.getElementById('intro');
@@ -113,9 +115,19 @@
 
   function ensureFolder(accessToken){
     if(folderId)return Promise.resolve({id:folderId,webViewLink:'https://drive.google.com/drive/folders/'+encodeURIComponent(folderId)});
+    if(retryFolder&&retryFolder.id)return Promise.resolve(retryFolder);
+    try{
+      var cached=window.sessionStorage.getItem(retryFolderStorageKey);
+      if(cached){
+        var parsed=JSON.parse(cached);
+        if(parsed&&parsed.id){retryFolder=parsed;return Promise.resolve(retryFolder);}
+      }
+    }catch(storageError){}
     return driveFetch('https://www.googleapis.com/drive/v3/files?fields=id,name,webViewLink',{method:'POST',accessToken:accessToken,headers:{'Content-Type':'application/json'},body:JSON.stringify({name:'Bukti Pembayaran Dosen',mimeType:'application/vnd.google-apps.folder',parents:['root']})}).then(function(r){
       if(!r.data||!r.data.id)throw new Error('Folder Bukti Pembayaran Dosen gagal dibuat.');
-      return r.data;
+      retryFolder={id:String(r.data.id),name:String(r.data.name||'Bukti Pembayaran Dosen'),webViewLink:String(r.data.webViewLink||('https://drive.google.com/drive/folders/'+encodeURIComponent(r.data.id)))};
+      try{window.sessionStorage.setItem(retryFolderStorageKey,JSON.stringify(retryFolder));}catch(storageError){}
+      return retryFolder;
     });
   }
 
@@ -216,8 +228,17 @@
           return;
         }
         try{
-          if(mode==='upload')uploadDrive(response.access_token);else connectDrive(response.access_token);
-        }catch(error){authorizeButton.disabled=false;setStatus(error&&error.message?error.message:String(error),'error');}
+          var operation=mode==='upload'?uploadDrive(response.access_token):connectDrive(response.access_token);
+          // uploadDrive/connectDrive mengembalikan Promise; error jaringan atau
+          // permission terjadi asynchronous dan tidak tertangkap try/catch saja.
+          Promise.resolve(operation).catch(function(error){
+            authorizeButton.disabled=false;
+            setStatus(error&&error.message?error.message:String(error),'error');
+          });
+        }catch(error){
+          authorizeButton.disabled=false;
+          setStatus(error&&error.message?error.message:String(error),'error');
+        }
       },
       error_callback:function(error){authorizeButton.disabled=false;setStatus(error&&error.message?error.message:'Jendela izin Google Drive tidak dapat dibuka.','error');}
     });
